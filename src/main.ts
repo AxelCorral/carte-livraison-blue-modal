@@ -150,8 +150,10 @@ function bboxOf(coords: number[][]): LngLatBoundsLike {
 }
 
 function fitTo(bounds: LngLatBoundsLike) {
+  // Mobile : la bottom sheet recouvre le bas de la carte, on en tient compte.
+  const overlap = Math.max(0, map.getContainer().getBoundingClientRect().bottom - panel.getBoundingClientRect().top);
   const pad = isMobile()
-    ? { top: 30, bottom: 30, left: 20, right: 20 }
+    ? { top: 30, bottom: 30 + overlap, left: 20, right: 20 }
     : { top: 50, bottom: 50, left: 50, right: 60 };
   map.fitBounds(bounds, { padding: pad, duration: 700, maxZoom: 13 });
 }
@@ -210,7 +212,8 @@ function renderQuote(place: Place, data: ApiResult) {
 }
 
 function formatDuration(min: number) {
-  return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`;
+  // espaces insécables : la durée ne doit pas être coupée en fin de ligne
+  return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`;
 }
 
 function highlightLegend(index: number) {
