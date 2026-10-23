@@ -317,6 +317,7 @@ function choose(i: number) {
   input.value = place.label;
   closeList();
   input.blur();
+  setSheet(false); // mobile : on replie le panneau pour montrer l'itinéraire
   computeFor(place);
 }
 
