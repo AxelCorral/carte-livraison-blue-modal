@@ -1,8 +1,9 @@
 /**
- * Pré-calcul des zones d'isodistance ROUTIÈRE autour de l'origine → public/zones.geojson
+ * Pré-calcul des zones d'isodistance ROUTIÈRE autour de chaque départ → public/zones-<id>.geojson
  *
  *   npm run zones                 (profil 'auto' par défaut, cf. src/config.ts)
  *   npm run zones -- --truck      (profil poids lourd)
+ *   npm run zones -- --origin bellocq   (un seul départ ; par défaut : tous ceux de src/config.ts)
  *
  * Méthode :
  *  1. Isochrones Valhalla en distance pour toutes les bornes ≤ 100 km (4 contours max / requête,
@@ -21,7 +22,7 @@ import { union } from '@turf/union';
 import { simplify } from '@turf/simplify';
 import { featureCollection, multiPolygon } from '@turf/helpers';
 import type { Feature, MultiPolygon, Polygon } from 'geojson';
-import { ORIGIN, ROUTING, TIERS } from '../src/config.js';
+import { ORIGINS, ROUTING, TIERS, getOrigin, type Origin } from '../src/config.js';
 import { valhallaRoute, type LatLon } from '../src/routing.js';
 
 type Poly = Feature<Polygon | MultiPolygon>;
@@ -36,6 +37,18 @@ const FRONTIER_STEP_KM = 7; // espacement des points échantillonnés sur la fro
 const DENOISE = 0.1;
 const GENERALIZE_M = 150;
 const SIMPLIFY_TOLERANCE = 0.0015; // degrés (~150 m)
+
+const originArg = process.argv.indexOf('--origin');
+const SELECTED: Origin[] =
+  originArg > -1
+    ? [getOrigin(process.argv[originArg + 1]) ?? fail(`départ inconnu : ${process.argv[originArg + 1]}`)]
+    : ORIGINS;
+/** Départ en cours de calcul (seuls lat/lon sont envoyés aux API et utilisés comme clé de cache). */
+let ORIGIN: LatLon = { lat: 0, lon: 0 };
+
+function fail(msg: string): never {
+  throw new Error(msg);
+}
 
 const CONTROL_POINTS: (LatLon & { name: string })[] = [
   { name: 'Bayonne', lat: 43.4929, lon: -1.4748 },
@@ -256,7 +269,12 @@ function roundCoords(f: Feature<MultiPolygon>): Feature<MultiPolygon> {
 
 // --- main -----------------------------------------------------------------------------------
 async function main() {
-  console.log(`Origine : ${ORIGIN.name} (${ORIGIN.lat}, ${ORIGIN.lon}) — profil ${COSTING}\n`);
+  for (const origin of SELECTED) await buildFor(origin);
+}
+
+async function buildFor(origin: Origin) {
+  ORIGIN = { lat: origin.lat, lon: origin.lon };
+  console.log(`\n=== Départ ${origin.label} : ${origin.address} (${origin.lat}, ${origin.lon}) — profil ${COSTING}\n`);
   const bounds = TIERS.map((t) => t.max_km);
   const direct = bounds.filter((km) => km <= VALHALLA_MAX_KM);
   const extended = bounds.filter((km) => km > VALHALLA_MAX_KM);
@@ -287,17 +305,17 @@ async function main() {
     type: 'FeatureCollection',
     metadata: {
       generated_at: new Date().toISOString(),
-      origin: ORIGIN,
+      origin,
       costing: COSTING,
       source: 'Valhalla (valhalla1.openstreetmap.de) — données © OpenStreetMap contributors',
     },
     features,
   };
-  const out = resolve('public/zones.geojson');
+  const out = resolve(`public/zones-${origin.id}.geojson`);
   writeFileSync(out, JSON.stringify(fc));
   console.log(`\n✓ ${out} écrit (${(JSON.stringify(fc).length / 1024).toFixed(0)} Ko)\n`);
 
-  console.log('Contrôle — distances route depuis l’origine :');
+  console.log(`Contrôle — distances route depuis ${origin.label} :`);
   for (const c of CONTROL_POINTS) {
     try {
       const r = await routeKm(c);

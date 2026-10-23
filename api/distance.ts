@@ -1,6 +1,6 @@
-// GET /api/distance?lat=43.49&lon=-1.47&options=city,chariot
-// → distance route exacte depuis l'origine, tranche, prix et géométrie de l'itinéraire.
-import { ORIGIN } from '../src/config.js';
+// GET /api/distance?lat=43.49&lon=-1.47[&origin=bellocq|mouguerre][&options=city,chariot]
+// → distance route exacte depuis le départ choisi, tranche, prix et géométrie de l'itinéraire.
+import { DEFAULT_ORIGIN, getOrigin, type Origin } from '../src/config.js';
 import { quote } from '../src/pricing.js';
 import { route, RoutingError, type RouteResult } from '../src/routing.js';
 
@@ -25,12 +25,16 @@ function json(body: unknown, status = 200, extraHeaders: Record<string, string> 
   });
 }
 
-async function cachedRoute(lat: number, lon: number): Promise<{ result: RouteResult; cached: boolean }> {
+async function cachedRoute(
+  origin: Origin,
+  lat: number,
+  lon: number,
+): Promise<{ result: RouteResult; cached: boolean }> {
   // ~1 m de précision : deux clics au même endroit partagent le résultat.
-  const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+  const key = `${origin.id}:${lat.toFixed(5)},${lon.toFixed(5)}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return { result: hit.value, cached: true };
-  const result = await route(ORIGIN, { lat, lon }, process.env.ORS_API_KEY);
+  const result = await route({ lat: origin.lat, lon: origin.lon }, { lat, lon }, process.env.ORS_API_KEY);
   if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value!);
   cache.set(key, { at: Date.now(), value: result });
   return { result, cached: false };
@@ -44,18 +48,20 @@ export async function GET(request: Request): Promise<Response> {
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < 35 || lat > 52 || lon < -10 || lon > 10) {
     return json({ error: 'Paramètres lat/lon invalides ou hors zone (France / Espagne).' }, 400);
   }
+  const origin = params.has('origin') ? getOrigin(params.get('origin')) : DEFAULT_ORIGIN;
+  if (!origin) return json({ error: `Départ inconnu : ${params.get('origin')}` }, 400);
   const options = (params.get('options') ?? '').split(',').filter(Boolean);
 
   try {
-    const { result, cached } = await cachedRoute(lat, lon);
+    const { result, cached } = await cachedRoute(origin, lat, lon);
     const end = result.coordinates[result.coordinates.length - 1];
     if (end && haversineKm(end, [lon, lat]) > MAX_SNAP_KM) {
       return json({ error: `Aucune route à moins de ${MAX_SNAP_KM} km de ce point (mer, montagne ?).` }, 422);
     }
-    const q =quote(Math.round(result.distance_km * 10) / 10, options);
+    const q = quote(Math.round(result.distance_km * 10) / 10, options);
     return json(
       {
-        origin: ORIGIN,
+        origin,
         destination: { lat, lon },
         distance_km: q.distance_km,
         duration_min: Math.round(result.duration_s / 60),

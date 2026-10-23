@@ -1,11 +1,25 @@
+// Script commun aux 3 pages, configuré par les attributs de <body> :
+//   data-calculator="true|false"  calculateur d'adresse + suppléments (absent sur la carte seule)
+//   data-switcher="true|false"    sélecteur de départ (Bellocq / Mouguerre…), sinon départ par défaut
 import maplibregl, { type GeoJSONSource, type LngLatBoundsLike } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './style.css';
-import { DISCLAIMER, ORIGIN, QUOTE_COLOR, QUOTE_LABEL, SUPPLEMENTS, SUPPLEMENTS_NOTE, TIERS } from './config';
+import {
+  DEFAULT_ORIGIN,
+  DISCLAIMER,
+  ORIGINS,
+  QUOTE_COLOR,
+  QUOTE_LABEL,
+  SUPPLEMENTS,
+  SUPPLEMENTS_NOTE,
+  TIERS,
+  getOrigin,
+  type Origin,
+} from './config';
 import { LAST_KM, formatEuro, quote, tierLabel } from './pricing';
-import zonesRaw from '../public/zones.geojson?raw';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+const $opt = <T extends HTMLElement>(id: string) => document.getElementById(id) as T | null;
 
 interface Place {
   label: string;
@@ -21,11 +35,21 @@ interface ApiResult {
   error?: string;
 }
 
+const HAS_CALCULATOR = document.body.dataset.calculator === 'true';
+const HAS_SWITCHER = document.body.dataset.switcher === 'true';
+
+// Zones embarquées dans le bundle (un fichier JS par départ, chargé à la demande) : pas de requête
+// .geojson séparée, que certains navigateurs intégrés mobiles ne chargeaient pas.
+const zoneLoaders = import.meta.glob<string>('../public/zones-*.geojson', { query: '?raw', import: 'default' });
+
+let origin: Origin = DEFAULT_ORIGIN;
+if (HAS_SWITCHER) origin = getOrigin(new URLSearchParams(location.search).get('depart')) ?? DEFAULT_ORIGIN;
+
 // ---------------------------------------------------------------- panneau statique
-$('title').textContent = `Tarifs selon la distance (à partir de ${ORIGIN.name})`;
-$('origin-address').textContent = ORIGIN.address;
-$('supplements-note').textContent = SUPPLEMENTS_NOTE;
-$('disclaimer').textContent = DISCLAIMER;
+$('title').textContent = `Tarifs selon la distance (à partir de ${origin.name})`;
+$('disclaimer').textContent = HAS_CALCULATOR
+  ? DISCLAIMER
+  : 'Zones calculées en distance routière depuis le départ choisi ; visualisation approximative.';
 
 const legend = $('legend');
 const legendRows = [
@@ -39,17 +63,27 @@ legend.innerHTML = legendRows
   )
   .join('');
 
-const suppContainer = $('supplements');
-for (const s of SUPPLEMENTS.filter((s) => s.enabled)) {
-  const label = document.createElement('label');
-  label.className = 'supp';
-  label.innerHTML = `<input type="checkbox" value="${s.id}" ${s.defaultChecked ? 'checked' : ''} /><span>${s.label}</span><span class="price">+${formatEuro(s.prix)}</span>`;
-  suppContainer.append(label);
+// Sélecteur de départ
+const switcher = $opt('origin-switch');
+if (switcher) {
+  switcher.hidden = !HAS_SWITCHER;
+  switcher.innerHTML = ORIGINS.map(
+    (o) => `<button type="button" role="radio" data-id="${o.id}">${o.label}</button>`,
+  ).join('');
+  switcher.addEventListener('click', (e) => {
+    const id = (e.target as HTMLElement).closest('button')?.dataset.id;
+    if (id && id !== origin.id) setOrigin(getOrigin(id)!);
+  });
 }
-suppContainer.addEventListener('change', () => last && renderQuote(last.place, last.data));
 
-const selectedSupplements = () =>
-  [...suppContainer.querySelectorAll<HTMLInputElement>('input:checked')].map((i) => i.value);
+// Liens entre les pages, en conservant le départ choisi
+function updateNavLinks() {
+  document.querySelectorAll<HTMLAnchorElement>('a[data-keep-depart]').forEach((a) => {
+    const url = new URL(a.href, location.href);
+    url.searchParams.set('depart', origin.id);
+    a.href = url.pathname + url.search;
+  });
+}
 
 // Bottom sheet (mobile)
 const panel = $('panel');
@@ -66,7 +100,7 @@ const isMobile = () => window.matchMedia('(max-width: 760px)').matches;
 const map = new maplibregl.Map({
   container: 'map',
   style: 'https://tiles.openfreemap.org/styles/positron',
-  center: [ORIGIN.lon, ORIGIN.lat],
+  center: [origin.lon, origin.lat],
   zoom: 7,
   attributionControl: { compact: true },
 });
@@ -75,61 +109,20 @@ map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-ri
 const originEl = document.createElement('div');
 originEl.className = 'origin-marker';
 originEl.textContent = 'BM';
-originEl.title = `${ORIGIN.name} — ${ORIGIN.address}`;
-new maplibregl.Marker({ element: originEl })
-  .setLngLat([ORIGIN.lon, ORIGIN.lat])
-  .setPopup(new maplibregl.Popup({ offset: 20 }).setHTML(`<strong>${ORIGIN.name}</strong><br>${ORIGIN.address}`))
-  .addTo(map);
+const originPopup = new maplibregl.Popup({ offset: 20 });
+const originMarker = new maplibregl.Marker({ element: originEl }).setPopup(originPopup);
 
 const destMarker = new maplibregl.Marker({ color: '#0F1B2D' });
 const emptyLine: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 
 // La carte peut ne pas être prête quand l'utilisateur choisit une adresse (réseau mobile lent) :
-// le prix s'affiche tout de suite, le tracé attend la carte.
+// le prix s'affiche tout de suite, le tracé et les zones attendent la carte.
 const mapReady = new Promise<void>((resolve) => map.once('load', () => resolve()));
 
 map.once('load', () => {
-  // 1. Couche itinéraire en premier, sans attendre le téléchargement des zones.
-  map.addSource('route', { type: 'geojson', data: emptyLine });
-  map.addLayer({
-    id: 'route-casing',
-    type: 'line',
-    source: 'route',
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#ffffff', 'line-width': 7 },
-  });
-  map.addLayer({
-    id: 'route-line',
-    type: 'line',
-    source: 'route',
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#0F1B2D', 'line-width': 4 },
-  });
-  map.getCanvas().style.cursor = 'crosshair';
-  map.on('click', (e) => onMapClick(e.lngLat.lat, e.lngLat.lng));
-
-  // 2. Zones (sous l'itinéraire et sous les libellés du fond de carte).
-  try {
-    addZones();
-  } catch (err) {
-    showZonesError(err);
-  }
-});
-
-function addZones() {
-  // Zones embarquées dans le bundle (pas de requête séparée : certains navigateurs intégrés
-  // mobiles ne chargeaient pas le fichier .geojson).
-  const zones = JSON.parse(zonesRaw) as GeoJSON.FeatureCollection;
-  // Couleurs et prix relus depuis la config (pas besoin de régénérer les zones pour les changer).
-  for (const f of zones.features) {
-    const tier = TIERS.find((t) => t.max_km === f.properties!.max_km);
-    if (tier) Object.assign(f.properties!, { couleur: tier.couleur, prix: tier.prix });
-  }
-  // Les plus grandes zones d'abord pour que les petites restent visibles.
-  zones.features.sort((a, b) => (b.properties!.max_km as number) - (a.properties!.max_km as number));
-
+  // Itinéraire au-dessus de tout, zones sous les libellés du fond de carte.
   const firstSymbol = map.getStyle().layers.find((l) => l.type === 'symbol')?.id;
-  map.addSource('zones', { type: 'geojson', data: zones });
+  map.addSource('zones', { type: 'geojson', data: emptyLine });
   map.addLayer(
     {
       id: 'zones-fill',
@@ -148,17 +141,61 @@ function addZones() {
     },
     firstSymbol,
   );
+  map.addSource('route', { type: 'geojson', data: emptyLine });
+  map.addLayer({
+    id: 'route-casing',
+    type: 'line',
+    source: 'route',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#ffffff', 'line-width': 7 },
+  });
+  map.addLayer({
+    id: 'route-line',
+    type: 'line',
+    source: 'route',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#0F1B2D', 'line-width': 4 },
+  });
+  if (HAS_CALCULATOR) {
+    map.getCanvas().style.cursor = 'crosshair';
+    map.on('click', (e) => onMapClick(e.lngLat.lat, e.lngLat.lng));
+  }
+});
 
-  // Ne pas écraser le cadrage d'un itinéraire déjà affiché.
-  if (!last) fitTo(bboxOf(zones.features.flatMap((f) => flatCoords(f.geometry))));
+let zonesSeq = 0;
+async function showZones(o: Origin) {
+  const seq = ++zonesSeq;
+  hideZonesError();
+  try {
+    const load = zoneLoaders[`../public/zones-${o.id}.geojson`];
+    if (!load) throw new Error(`zones du départ « ${o.label} » non générées`);
+    const zones = JSON.parse(await load()) as GeoJSON.FeatureCollection;
+    // Couleurs et prix relus depuis la config (pas besoin de régénérer les zones pour les changer).
+    for (const f of zones.features) {
+      const tier = TIERS.find((t) => t.max_km === f.properties!.max_km);
+      if (tier) Object.assign(f.properties!, { couleur: tier.couleur, prix: tier.prix });
+    }
+    // Les plus grandes zones d'abord pour que les petites restent visibles.
+    zones.features.sort((a, b) => (b.properties!.max_km as number) - (a.properties!.max_km as number));
+    await mapReady;
+    if (seq !== zonesSeq) return;
+    (map.getSource('zones') as GeoJSONSource).setData(zones);
+    // Ne pas écraser le cadrage d'un itinéraire affiché.
+    if (!last) fitTo(bboxOf(zones.features.flatMap((f) => flatCoords(f.geometry))));
+  } catch (err) {
+    if (seq === zonesSeq) showZonesError(err);
+  }
 }
 
 // Si les zones ne peuvent pas s'afficher, on le dit (le calculateur reste fonctionnel).
 function showZonesError(err: unknown) {
   console.error('Zones :', err);
   const el = $('zones-status');
-  el.textContent = `Affichage des zones indisponible sur cet appareil (${(err as Error)?.message ?? err}). Le calcul de prix fonctionne normalement.`;
+  el.textContent = `Affichage des zones indisponible (${(err as Error)?.message ?? err}).${HAS_CALCULATOR ? ' Le calcul de prix fonctionne normalement.' : ''}`;
   el.hidden = false;
+}
+function hideZonesError() {
+  $('zones-status').hidden = true;
 }
 map.on('error', (e) => {
   if ((e as any).sourceId === 'zones') showZonesError(e.error);
@@ -200,16 +237,53 @@ function fitTo(bounds: LngLatBoundsLike) {
   map.fitBounds(bounds, { padding: pad, duration: 700, maxZoom: 13 });
 }
 
+// ---------------------------------------------------------------- départ
+function setOrigin(o: Origin) {
+  origin = o;
+  $('origin-address').textContent = HAS_SWITCHER ? `Départ : ${o.label} — ${o.address}` : o.address;
+  originEl.title = `${o.name} — ${o.address}`;
+  originPopup.setHTML(`<strong>${o.name} · ${o.label}</strong><br>${o.address}`);
+  originMarker.setLngLat([o.lon, o.lat]).addTo(map);
+  switcher?.querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.id === o.id)));
+  if (HAS_SWITCHER) {
+    const url = new URL(location.href);
+    url.searchParams.set('depart', o.id);
+    history.replaceState(null, '', url);
+    updateNavLinks();
+  }
+  // Un itinéraire déjà affiché est recalculé depuis le nouveau départ.
+  const current = last?.place;
+  last = null;
+  showZones(o);
+  if (current) computeFor(current);
+}
+
 // ---------------------------------------------------------------- calcul
-const resultEl = $('result');
+const resultEl = $opt('result');
 let last: { place: Place; data: ApiResult } | null = null;
 let requestSeq = 0;
+
+const suppContainer = $opt('supplements');
+if (suppContainer) {
+  $('supplements-note').textContent = SUPPLEMENTS_NOTE;
+  for (const s of SUPPLEMENTS.filter((s) => s.enabled)) {
+    const label = document.createElement('label');
+    label.className = 'supp';
+    label.innerHTML = `<input type="checkbox" value="${s.id}" ${s.defaultChecked ? 'checked' : ''} /><span>${s.label}</span><span class="price">+${formatEuro(s.prix)}</span>`;
+    suppContainer.append(label);
+  }
+  suppContainer.addEventListener('change', () => last && renderQuote(last.place, last.data));
+}
+
+const selectedSupplements = () =>
+  suppContainer ? [...suppContainer.querySelectorAll<HTMLInputElement>('input:checked')].map((i) => i.value) : [];
 
 function esc(s: string) {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
 async function computeFor(place: Place) {
+  if (!resultEl) return;
   const seq = ++requestSeq;
   resultEl.hidden = false;
   resultEl.innerHTML = `<p class="dest">${esc(place.label)}</p><p class="loading">Calcul de l’itinéraire…</p>`;
@@ -218,7 +292,7 @@ async function computeFor(place: Place) {
 
   let data: ApiResult;
   try {
-    const res = await fetch(`/api/distance?lat=${place.lat}&lon=${place.lon}`);
+    const res = await fetch(`/api/distance?origin=${origin.id}&lat=${place.lat}&lon=${place.lon}`);
     data = (await res.json()) as ApiResult;
     if (seq !== requestSeq) return;
     if (!res.ok) throw new Error(data.error ?? `Erreur ${res.status}`);
@@ -236,6 +310,7 @@ async function computeFor(place: Place) {
 }
 
 function renderQuote(place: Place, data: ApiResult) {
+  if (!resultEl) return;
   const q = quote(data.distance_km, selectedSupplements());
   const km = q.distance_km.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const lines = q.sur_devis
@@ -245,10 +320,11 @@ function renderQuote(place: Place, data: ApiResult) {
         ...q.supplements.map((s) => `<li><span>${esc(s.label)}</span><span>+${formatEuro(s.prix)}</span></li>`),
         `<li class="total"><span>Total</span><span>${formatEuro(q.total!)}</span></li>`,
       ].join('');
+  const from = HAS_SWITCHER ? ` depuis ${esc(origin.label)}` : '';
   resultEl.innerHTML = `
     <p class="dest">${esc(place.label)}${place.context ? ` · ${esc(place.context)}` : ''}</p>
     <div class="big">
-      <span class="km">${km} km <small>par la route · ~${formatDuration(data.duration_min)}</small></span>
+      <span class="km">${km} km <small>par la route${from} · ~${formatDuration(data.duration_min)}</small></span>
       <span class="badge"><i style="background:${q.couleur}"></i>${q.tier_label}</span>
     </div>
     <ul class="lines">${lines}</ul>`;
@@ -267,22 +343,18 @@ function highlightLegend(index: number) {
 async function onMapClick(lat: number, lon: number) {
   const fallback = `Point ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
   const place: Place = { label: fallback, context: '', lat, lon };
-  input.value = '';
+  if (input) input.value = '';
   computeFor(place);
   const rev = await reverseGeocode(lat, lon).catch(() => null);
-  if (rev && last?.place === place) {
-    place.label = rev.label;
-    place.context = rev.context;
-    renderQuote(place, last.data);
-  } else if (rev) {
-    place.label = rev.label;
-    place.context = rev.context;
-  }
+  if (!rev) return;
+  place.label = rev.label;
+  place.context = rev.context;
+  if (last?.place === place) renderQuote(place, last.data);
 }
 
 // ---------------------------------------------------------------- géocodage
 async function searchBan(q: string, signal: AbortSignal): Promise<Place[]> {
-  const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&limit=5&lat=${ORIGIN.lat}&lon=${ORIGIN.lon}`;
+  const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&limit=5&lat=${origin.lat}&lon=${origin.lon}`;
   const data = await fetch(url, { signal }).then((r) => r.json());
   // Score faible = rapprochement hasardeux (ex. une adresse espagnole → "chemin de la coste, Plazac" à 0,33).
   return (data.features ?? []).filter((f: any) => f.properties.score >= 0.4).map((f: any) => ({
@@ -304,7 +376,7 @@ function photonPlace(f: any): Place {
 }
 
 async function searchPhoton(q: string, signal: AbortSignal): Promise<(Place & { cc: string })[]> {
-  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6&lang=fr&lat=${ORIGIN.lat}&lon=${ORIGIN.lon}&bbox=-10,35.5,4.5,46.5`;
+  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6&lang=fr&lat=${origin.lat}&lon=${origin.lon}&bbox=-10,35.5,4.5,46.5`;
   const data = await fetch(url, { signal }).then((r) => r.json());
   return (data.features ?? []).map((f: any) => ({ ...photonPlace(f), cc: f.properties.countrycode ?? '' }));
 }
@@ -332,20 +404,22 @@ async function reverseGeocode(lat: number, lon: number): Promise<Place | null> {
 }
 
 // ---------------------------------------------------------------- autocomplétion
-const input = $<HTMLInputElement>('address');
-const list = $<HTMLUListElement>('suggestions');
+const input = $opt<HTMLInputElement>('address');
+const list = $opt<HTMLUListElement>('suggestions');
 let suggestions: Place[] = [];
 let active = -1;
 let debounce: number | undefined;
 let controller: AbortController | null = null;
 
 function closeList() {
+  if (!input || !list) return;
   list.hidden = true;
   input.setAttribute('aria-expanded', 'false');
   active = -1;
 }
 
 function renderList() {
+  if (!input || !list) return;
   if (!suggestions.length) return closeList();
   list.innerHTML = suggestions
     .map(
@@ -361,7 +435,7 @@ function renderList() {
 
 function choose(i: number) {
   const place = suggestions[i];
-  if (!place) return;
+  if (!place || !input) return;
   input.value = place.label;
   closeList();
   input.blur();
@@ -369,52 +443,57 @@ function choose(i: number) {
   computeFor(place);
 }
 
-input.addEventListener('input', () => {
-  clearTimeout(debounce);
-  const q = input.value.trim();
-  if (q.length < 3) {
-    suggestions = [];
-    return closeList();
-  }
-  debounce = window.setTimeout(async () => {
-    controller?.abort();
-    controller = new AbortController();
-    try {
-      suggestions = await geocode(q, controller.signal);
-      active = -1;
-      renderList();
-    } catch {
-      /* requête annulée */
+if (input && list) {
+  input.addEventListener('input', () => {
+    clearTimeout(debounce);
+    const q = input.value.trim();
+    if (q.length < 3) {
+      suggestions = [];
+      return closeList();
     }
-  }, 250);
-});
+    debounce = window.setTimeout(async () => {
+      controller?.abort();
+      controller = new AbortController();
+      try {
+        suggestions = await geocode(q, controller.signal);
+        active = -1;
+        renderList();
+      } catch {
+        /* requête annulée */
+      }
+    }, 250);
+  });
 
-input.addEventListener('keydown', (e) => {
-  if (list.hidden) {
-    if (e.key === 'Enter' && suggestions.length) choose(0);
-    return;
-  }
-  if (e.key === 'ArrowDown') active = Math.min(active + 1, suggestions.length - 1);
-  else if (e.key === 'ArrowUp') active = Math.max(active - 1, 0);
-  else if (e.key === 'Enter') return choose(active >= 0 ? active : 0);
-  else if (e.key === 'Escape') return closeList();
-  else return;
-  e.preventDefault();
-  renderList();
-});
+  input.addEventListener('keydown', (e) => {
+    if (list.hidden) {
+      if (e.key === 'Enter' && suggestions.length) choose(0);
+      return;
+    }
+    if (e.key === 'ArrowDown') active = Math.min(active + 1, suggestions.length - 1);
+    else if (e.key === 'ArrowUp') active = Math.max(active - 1, 0);
+    else if (e.key === 'Enter') return choose(active >= 0 ? active : 0);
+    else if (e.key === 'Escape') return closeList();
+    else return;
+    e.preventDefault();
+    renderList();
+  });
 
-input.addEventListener('focus', () => {
-  if (isMobile()) setSheet(true);
-  if (suggestions.length && input.value.trim().length >= 3) renderList();
-});
+  input.addEventListener('focus', () => {
+    if (isMobile()) setSheet(true);
+    if (suggestions.length && input.value.trim().length >= 3) renderList();
+  });
 
-list.addEventListener('mousedown', (e) => {
-  const li = (e.target as HTMLElement).closest('li');
-  if (!li) return;
-  e.preventDefault();
-  choose(Number(li.dataset.i));
-});
+  list.addEventListener('mousedown', (e) => {
+    const li = (e.target as HTMLElement).closest('li');
+    if (!li) return;
+    e.preventDefault();
+    choose(Number(li.dataset.i));
+  });
 
-document.addEventListener('click', (e) => {
-  if (!(e.target as HTMLElement).closest('.search')) closeList();
-});
+  document.addEventListener('click', (e) => {
+    if (!(e.target as HTMLElement).closest('.search')) closeList();
+  });
+}
+
+// ---------------------------------------------------------------- démarrage
+setOrigin(origin);

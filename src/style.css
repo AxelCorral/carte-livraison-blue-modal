@@ -95,6 +95,73 @@ h2 {
   padding: 16px;
 }
 
+/* ---------- sélecteur de départ ---------- */
+.origin-switch {
+  display: flex;
+  gap: 4px;
+  margin-top: 14px;
+  padding: 4px;
+  background: var(--navy-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.origin-switch[hidden] {
+  display: none;
+}
+
+.origin-switch button {
+  flex: 1;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  padding: 9px 10px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.origin-switch button:hover {
+  color: var(--text);
+}
+
+.origin-switch button[aria-checked='true'] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.origin-switch button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- liens entre pages ---------- */
+.pages {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.pages a {
+  color: var(--text);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.pages a:hover {
+  border-bottom-color: var(--accent);
+}
+
+.pages [aria-current] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* ---------- recherche ---------- */
 .search {
   position: relative;
@@ -408,7 +475,13 @@ h2 {
     transition: height 0.25s ease;
   }
 
-  .panel[data-state='expanded'] {
+  /* Carte seule : pas de calculateur, on laisse plus de place à la carte. */
+  body[data-calculator='false'] .panel {
+    height: 36vh;
+  }
+
+  .panel[data-state='expanded'],
+  body[data-calculator='false'] .panel[data-state='expanded'] {
     height: 88vh;
     height: 88dvh;
   }

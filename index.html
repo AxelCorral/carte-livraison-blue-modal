@@ -4,14 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Zones de livraison — Blue Modal</title>
-    <meta name="description" content="Tarifs de livraison selon la distance routière depuis Blue Modal (Mouguerre) et calculateur de prix par adresse." />
+    <meta name="description" content="Tarifs de livraison selon la distance routière depuis Blue Modal (Bellocq) et calculateur de prix par adresse." />
     <meta name="theme-color" content="#0F1B2D" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   </head>
-  <body>
+  <body data-calculator="true" data-switcher="false">
     <div id="map" aria-label="Carte des zones de livraison"></div>
 
     <aside id="panel" class="panel" data-state="peek">
@@ -23,6 +23,7 @@
         <header class="panel-header">
           <p class="eyebrow">Blue Modal · Livraison</p>
           <h1 id="title"></h1>
+          <div id="origin-switch" class="origin-switch" role="radiogroup" aria-label="Lieu de départ" hidden></div>
           <p class="origin" id="origin-address"></p>
         </header>
 
@@ -52,6 +53,7 @@
         </section>
 
         <p class="disclaimer" id="disclaimer"></p>
+        <nav class="pages" aria-label="Pages"><span aria-current="page">Calculateur</span> · <a href="/comparer" data-keep-depart>Comparer les départs</a> · <a href="/carte" data-keep-depart>Carte seule</a></nav>
         <footer class="credits">
           Itinéraires : <a href="https://valhalla1.openstreetmap.de" target="_blank" rel="noopener">Valhalla</a> ·
           Carte : <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> ·

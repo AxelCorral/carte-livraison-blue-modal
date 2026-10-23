@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Comparer les départs — Blue Modal</title>
+    <meta name="description" content="Zones et prix de livraison au départ de Bellocq ou de Mouguerre." />
+    <meta name="theme-color" content="#0F1B2D" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body data-calculator="true" data-switcher="true">
+    <div id="map" aria-label="Carte des zones de livraison"></div>
+
+    <aside id="panel" class="panel" data-state="peek">
+      <button id="sheet-handle" class="sheet-handle" type="button" aria-label="Agrandir le panneau" aria-expanded="false">
+        <span></span>
+      </button>
+
+      <div class="panel-scroll">
+        <header class="panel-header">
+          <p class="eyebrow">Blue Modal · Livraison</p>
+          <h1 id="title"></h1>
+          <div id="origin-switch" class="origin-switch" role="radiogroup" aria-label="Lieu de départ" hidden></div>
+          <p class="origin" id="origin-address"></p>
+        </header>
+
+        <section class="block calc" aria-labelledby="calc-title">
+          <h2 id="calc-title">Calculer un prix</h2>
+          <div class="search">
+            <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 0 1 5.9 12.1l4.2 4.2-1.4 1.4-4.2-4.2A7.5 7.5 0 1 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
+            <input id="address" type="search" autocomplete="off" spellcheck="false"
+              placeholder="Adresse de livraison (France, Espagne)…"
+              role="combobox" aria-expanded="false" aria-controls="suggestions" aria-autocomplete="list" />
+            <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
+          </div>
+          <p class="hint">…ou cliquez directement sur la carte.</p>
+          <div id="result" class="result" hidden aria-live="polite"></div>
+        </section>
+
+        <section class="block" aria-labelledby="tiers-title">
+          <h2 id="tiers-title">Tranches de distance (route)</h2>
+          <ul id="legend" class="legend"></ul>
+          <p id="zones-status" class="note" hidden></p>
+        </section>
+
+        <section class="block" aria-labelledby="supp-title">
+          <h2 id="supp-title">Suppléments</h2>
+          <div id="supplements" class="supplements"></div>
+          <p class="note" id="supplements-note"></p>
+        </section>
+
+        <p class="disclaimer" id="disclaimer"></p>
+        <nav class="pages" aria-label="Pages"><a href="/">Calculateur</a> · <span aria-current="page">Comparer les départs</span> · <a href="/carte" data-keep-depart>Carte seule</a></nav>
+        <footer class="credits">
+          Itinéraires : <a href="https://valhalla1.openstreetmap.de" target="_blank" rel="noopener">Valhalla</a> ·
+          Carte : <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> ·
+          Données © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> ·
+          Adresses : <a href="https://adresse.data.gouv.fr" target="_blank" rel="noopener">BAN</a> / Photon
+        </footer>
+      </div>
+    </aside>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

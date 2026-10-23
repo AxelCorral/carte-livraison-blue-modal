@@ -3,13 +3,8 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "cleanUrls": true,
   "functions": {
     "api/distance.ts": { "maxDuration": 30 }
-  },
-  "headers": [
-    {
-      "source": "/zones.geojson",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600, s-maxage=86400" }]
-    }
-  ]
+  }
 }

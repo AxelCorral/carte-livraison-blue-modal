@@ -1,11 +1,26 @@
-# Carte des zones de livraison — Blue Modal (Mouguerre)
+# Carte des zones de livraison — Blue Modal (Bellocq / Mouguerre)
 
 Site public qui affiche les **zones tarifaires de livraison calculées en distance routière** (pas à vol
-d'oiseau) autour de Blue Modal, Centre Européen de Fret, Mouguerre (64990), avec un **calculateur de prix
-par adresse**.
+d'oiseau) autour des départs de Blue Modal, avec un **calculateur de prix par adresse** :
+
+- **Bellocq** (départ par défaut) : Chemin de Lesperance, 64270 Bellocq ;
+- **Mouguerre** : Centre Européen de Fret, 5 Av. d'Alegera, 64990 Mouguerre.
+
+## Pages
+
+| URL | Contenu |
+| --- | --- |
+| `/` | Calculateur, départ de **Bellocq** |
+| `/comparer` | Calculateur avec sélecteur **Bellocq / Mouguerre** (l'itinéraire affiché est recalculé au changement) |
+| `/carte` | **Carte seule** : zones + légende + sélecteur de départ, sans saisie d'adresse |
+
+Le départ choisi est dans l'URL (`?depart=bellocq` ou `?depart=mouguerre`) : un lien peut donc ouvrir
+directement la bonne carte, par ex. `/carte?depart=mouguerre`.
+
+## Technique
 
 - Carte : Vite + TypeScript + MapLibre GL, fond OpenFreeMap (sans clé)
-- Zones : pré-calculées avec l'API isochrone Valhalla → `public/zones.geojson`
+- Zones : pré-calculées avec l'API isochrone Valhalla → `public/zones-<départ>.geojson`
 - Prix : fonction serverless Vercel `api/distance.ts` qui calcule l'itinéraire **exact** (Valhalla `/route`,
   fallback OpenRouteService) et applique la grille tarifaire côté serveur
 - Adresses : API Adresse (BAN) pour la France, Photon (Komoot) pour l'Espagne
@@ -34,10 +49,13 @@ Modal +50 € (désactivé par défaut).
 src/config.ts         ← TOUTE la configuration métier (origine, tranches, couleurs, suppléments, textes, routage)
 src/pricing.ts        ← calcul tranche / prix / total (partagé front + API)
 src/routing.ts        ← appels Valhalla / ORS (API + script uniquement)
-src/main.ts           ← carte, panneau, autocomplétion, calculateur
-api/distance.ts       ← fonction serverless Vercel : GET /api/distance?lat=..&lon=..[&options=city,chariot]
-scripts/build-zones.ts← génération de public/zones.geojson
-public/zones.geojson  ← zones pré-calculées (commité, intégré au bundle JS au build)
+src/main.ts           ← carte, panneau, sélecteur de départ, autocomplétion, calculateur (commun aux 3 pages)
+index.html            ← page calculateur (départ par défaut)
+comparer.html         ← calculateur + sélecteur de départ
+carte.html            ← carte seule + sélecteur de départ
+api/distance.ts       ← fonction serverless Vercel : GET /api/distance?lat=..&lon=..[&origin=bellocq][&options=city,chariot]
+scripts/build-zones.ts← génération de public/zones-<départ>.geojson
+public/zones-*.geojson← zones pré-calculées par départ (commitées, intégrées au bundle JS au build)
 ```
 
 ## Développement local
@@ -61,21 +79,26 @@ Tout est dans `src/config.ts` :
 **Changer uniquement un prix, une couleur ou un supplément** → commit + push, Vercel redéploie. Pas besoin de
 régénérer les zones (la couleur et le prix sont relus depuis la config par le front).
 
-**Changer une borne de distance ou l'origine** → il faut régénérer les zones (ci-dessous).
+**Changer une borne de distance ou un départ** → il faut régénérer les zones (ci-dessous).
 
-## Changer l'origine
+## Changer ou ajouter un départ
 
-Dans `src/config.ts`, modifier `ORIGIN` (`lat`, `lon`, `address`), puis régénérer les zones.
+Dans `src/config.ts`, liste `ORIGINS` : chaque départ a un `id` (utilisé dans l'URL et le nom du fichier de
+zones), un `label` (bouton du sélecteur), une `address`, `lat` et `lon`. `DEFAULT_ORIGIN_ID` choisit le
+départ de la page principale. Après modification : `npm run zones -- --origin <id>`.
 
 ## Régénérer les zones
 
 ```bash
-npm run zones              # profil voiture (costing "auto")
-npm run zones -- --truck   # profil poids lourd (costing "truck")
-git add public/zones.geojson && git commit -m "Régénère les zones" && git push
+npm run zones                       # tous les départs, profil voiture (costing "auto")
+npm run zones -- --origin bellocq   # un seul départ
+npm run zones -- --truck            # profil poids lourd (costing "truck")
+git add public/zones-*.geojson && git commit -m "Régénère les zones" && git push
 ```
 
-Durée : environ 10 à 15 minutes (le script respecte un délai de 1,3 s entre appels aux serveurs publics).
+Durée : environ 15 à 25 minutes par départ (le script respecte un délai de 1,3 s entre appels aux serveurs
+publics). Les réponses sont mises en cache dans `scripts/.cache` (ignoré par git) : une relance est quasi
+instantanée.
 
 ### Méthode
 

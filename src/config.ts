@@ -3,6 +3,10 @@
 // ou les bornes de distance changent).
 
 export interface Origin {
+  /** Identifiant court (URL ?depart=, nom du fichier de zones). */
+  id: string;
+  /** Libellé du sélecteur de départ. */
+  label: string;
   name: string;
   address: string;
   lat: number;
@@ -29,13 +33,36 @@ export interface Supplement {
   defaultChecked: boolean;
 }
 
-export const ORIGIN: Origin = {
-  name: 'Blue Modal',
-  address: "Centre Européen de Fret, 5 Av. d'Alegera, 64990 Mouguerre",
-  // Coordonnées confirmées (géocodage API Adresse du 5 Rue Alegera).
-  lat: 43.485135,
-  lon: -1.426763,
-};
+/** Départs possibles. Ajouter un départ = une entrée ici + `npm run zones -- --origin <id>`. */
+export const ORIGINS: Origin[] = [
+  {
+    id: 'bellocq',
+    label: 'Bellocq',
+    name: 'Blue Modal',
+    address: 'Chemin de Lesperance, 64270 Bellocq',
+    // Coordonnées confirmées (API Adresse, milieu du chemin de Lesperance).
+    lat: 43.508612,
+    lon: -0.9187,
+  },
+  {
+    id: 'mouguerre',
+    label: 'Mouguerre',
+    name: 'Blue Modal',
+    address: "Centre Européen de Fret, 5 Av. d'Alegera, 64990 Mouguerre",
+    // Coordonnées confirmées (géocodage API Adresse du 5 Rue Alegera).
+    lat: 43.485135,
+    lon: -1.426763,
+  },
+];
+
+/** Départ par défaut (page principale). */
+export const DEFAULT_ORIGIN_ID = 'bellocq';
+
+export function getOrigin(id: string | null | undefined): Origin | undefined {
+  return ORIGINS.find((o) => o.id === id);
+}
+
+export const DEFAULT_ORIGIN = getOrigin(DEFAULT_ORIGIN_ID)!;
 
 export const TIERS: Tier[] = [
   { min_km: 0, max_km: 15, prix: 300, couleur: '#E8616F' },

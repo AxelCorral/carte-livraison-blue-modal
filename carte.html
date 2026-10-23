@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Carte des zones — Blue Modal</title>
+    <meta name="description" content="Carte des zones tarifaires de livraison (distance routière) au départ de Bellocq ou de Mouguerre." />
+    <meta name="theme-color" content="#0F1B2D" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body data-calculator="false" data-switcher="true">
+    <div id="map" aria-label="Carte des zones de livraison"></div>
+
+    <aside id="panel" class="panel" data-state="peek">
+      <button id="sheet-handle" class="sheet-handle" type="button" aria-label="Agrandir le panneau" aria-expanded="false">
+        <span></span>
+      </button>
+
+      <div class="panel-scroll">
+        <header class="panel-header">
+          <p class="eyebrow">Blue Modal · Livraison</p>
+          <h1 id="title"></h1>
+          <div id="origin-switch" class="origin-switch" role="radiogroup" aria-label="Lieu de départ" hidden></div>
+          <p class="origin" id="origin-address"></p>
+        </header>
+
+        <section class="block" aria-labelledby="tiers-title">
+          <h2 id="tiers-title">Tranches de distance (route)</h2>
+          <ul id="legend" class="legend"></ul>
+          <p id="zones-status" class="note" hidden></p>
+        </section>
+
+        <p class="disclaimer" id="disclaimer"></p>
+        <nav class="pages" aria-label="Pages"><a href="/">Calculateur</a> · <a href="/comparer" data-keep-depart>Comparer les départs</a> · <span aria-current="page">Carte seule</span></nav>
+        <footer class="credits">
+          Itinéraires : <a href="https://valhalla1.openstreetmap.de" target="_blank" rel="noopener">Valhalla</a> ·
+          Carte : <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> ·
+          Données © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> ·
+          Adresses : <a href="https://adresse.data.gouv.fr" target="_blank" rel="noopener">BAN</a> / Photon
+        </footer>
+      </div>
+    </aside>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
