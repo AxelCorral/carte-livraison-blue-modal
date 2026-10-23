@@ -270,7 +270,8 @@ async function onMapClick(lat: number, lon: number) {
 async function searchBan(q: string, signal: AbortSignal): Promise<Place[]> {
   const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&limit=5&lat=${ORIGIN.lat}&lon=${ORIGIN.lon}`;
   const data = await fetch(url, { signal }).then((r) => r.json());
-  return (data.features ?? []).map((f: any) => ({
+  // Score faible = rapprochement hasardeux (ex. une adresse espagnole → "chemin de la coste, Plazac" à 0,33).
+  return (data.features ?? []).filter((f: any) => f.properties.score >= 0.4).map((f: any) => ({
     label: f.properties.label,
     context: f.properties.context ?? '',
     lon: f.geometry.coordinates[0],
