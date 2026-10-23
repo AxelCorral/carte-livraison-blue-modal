@@ -3,6 +3,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import './style.css';
 import { DISCLAIMER, ORIGIN, QUOTE_COLOR, QUOTE_LABEL, SUPPLEMENTS, SUPPLEMENTS_NOTE, TIERS } from './config';
 import { LAST_KM, formatEuro, quote, tierLabel } from './pricing';
+import zonesRaw from '../public/zones.geojson?raw';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -87,7 +88,7 @@ const emptyLine: GeoJSON.FeatureCollection = { type: 'FeatureCollection', featur
 // le prix s'affiche tout de suite, le tracé attend la carte.
 const mapReady = new Promise<void>((resolve) => map.once('load', () => resolve()));
 
-map.once('load', async () => {
+map.once('load', () => {
   // 1. Couche itinéraire en premier, sans attendre le téléchargement des zones.
   map.addSource('route', { type: 'geojson', data: emptyLine });
   map.addLayer({
@@ -108,15 +109,17 @@ map.once('load', async () => {
   map.on('click', (e) => onMapClick(e.lngLat.lat, e.lngLat.lng));
 
   // 2. Zones (sous l'itinéraire et sous les libellés du fond de carte).
-  let zones: GeoJSON.FeatureCollection;
   try {
-    const res = await fetch('/zones.geojson');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    zones = await res.json();
+    addZones();
   } catch (err) {
-    console.error('Zones indisponibles :', err);
-    return;
+    showZonesError(err);
   }
+});
+
+function addZones() {
+  // Zones embarquées dans le bundle (pas de requête séparée : certains navigateurs intégrés
+  // mobiles ne chargeaient pas le fichier .geojson).
+  const zones = JSON.parse(zonesRaw) as GeoJSON.FeatureCollection;
   // Couleurs et prix relus depuis la config (pas besoin de régénérer les zones pour les changer).
   for (const f of zones.features) {
     const tier = TIERS.find((t) => t.max_km === f.properties!.max_km);
@@ -148,6 +151,17 @@ map.once('load', async () => {
 
   // Ne pas écraser le cadrage d'un itinéraire déjà affiché.
   if (!last) fitTo(bboxOf(zones.features.flatMap((f) => flatCoords(f.geometry))));
+}
+
+// Si les zones ne peuvent pas s'afficher, on le dit (le calculateur reste fonctionnel).
+function showZonesError(err: unknown) {
+  console.error('Zones :', err);
+  const el = $('zones-status');
+  el.textContent = `Affichage des zones indisponible sur cet appareil (${(err as Error)?.message ?? err}). Le calcul de prix fonctionne normalement.`;
+  el.hidden = false;
+}
+map.on('error', (e) => {
+  if ((e as any).sourceId === 'zones') showZonesError(e.error);
 });
 
 let routeSeq = 0;

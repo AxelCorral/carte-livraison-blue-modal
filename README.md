@@ -37,7 +37,7 @@ src/routing.ts        ← appels Valhalla / ORS (API + script uniquement)
 src/main.ts           ← carte, panneau, autocomplétion, calculateur
 api/distance.ts       ← fonction serverless Vercel : GET /api/distance?lat=..&lon=..[&options=city,chariot]
 scripts/build-zones.ts← génération de public/zones.geojson
-public/zones.geojson  ← zones pré-calculées (commité)
+public/zones.geojson  ← zones pré-calculées (commité, intégré au bundle JS au build)
 ```
 
 ## Développement local

@@ -241,9 +241,16 @@ async function extendedContour(limitKm: number, base: Poly, baseKm: number): Pro
   return unionAll(pieces);
 }
 
+/** Arrondi à 1 m puis nettoyage : un anneau GeoJSON valide a ≥ 4 positions (sinon : éclat dégénéré). */
 function roundCoords(f: Feature<MultiPolygon>): Feature<MultiPolygon> {
   const r = (n: number) => Math.round(n * 1e5) / 1e5;
-  f.geometry.coordinates = f.geometry.coordinates.map((p) => p.map((ring) => ring.map(([x, y]) => [r(x), r(y)])));
+  const clean = (ring: number[][]) =>
+    ring.map(([x, y]) => [r(x), r(y)]).filter((c, i, a) => i === 0 || c[0] !== a[i - 1][0] || c[1] !== a[i - 1][1]);
+  f.geometry.coordinates = f.geometry.coordinates
+    .map((p) => p.map(clean))
+    // anneau extérieur dégénéré → tout le polygone saute ; trou dégénéré → seul le trou saute
+    .filter((p) => p[0].length >= 4)
+    .map((p) => p.filter((ring) => ring.length >= 4));
   return f;
 }
 
