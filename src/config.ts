@@ -51,8 +51,8 @@ export const QUOTE_COLOR = '#8A94A6';
 
 export const SUPPLEMENTS: Supplement[] = [
   { id: 'passage', label: 'Passage chez Blue Modal', prix: 50, enabled: false, defaultChecked: false },
-  { id: 'city', label: 'City pour la livraison', prix: 50, enabled: true, defaultChecked: false },
-  { id: 'chariot', label: 'Chariot embarqué', prix: 100, enabled: true, defaultChecked: false },
+  { id: 'city', label: 'City pour la livraison', prix: 100, enabled: true, defaultChecked: false },
+  { id: 'chariot', label: 'Chariot embarqué', prix: 150, enabled: true, defaultChecked: false },
 ];
 
 export const SUPPLEMENTS_NOTE =

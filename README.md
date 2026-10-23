@@ -25,7 +25,7 @@ par adresse**.
 
 Bornes hautes incluses. La distance utilisée est arrondie au dixième de km.
 
-Suppléments (cases à cocher) : City pour la livraison +50 €, Chariot embarqué +100 €, Passage chez Blue
+Suppléments (cases à cocher) : City pour la livraison +100 €, Chariot embarqué +150 €, Passage chez Blue
 Modal +50 € (désactivé par défaut).
 
 ## Structure
