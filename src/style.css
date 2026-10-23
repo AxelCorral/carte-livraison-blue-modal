@@ -390,8 +390,10 @@ h2 {
 
 /* ---------- mobile : bottom sheet ---------- */
 @media (max-width: 760px) {
+  /* Carte plein écran derrière la bottom sheet (le cadrage tient compte du recouvrement) :
+     pas de bande vide quand le clavier change la hauteur de la fenêtre. */
   #map {
-    inset: 0 0 34vh 0;
+    inset: 0;
   }
 
   .panel {

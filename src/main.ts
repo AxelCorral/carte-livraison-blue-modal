@@ -83,14 +83,46 @@ new maplibregl.Marker({ element: originEl })
 const destMarker = new maplibregl.Marker({ color: '#0F1B2D' });
 const emptyLine: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 
-map.on('load', async () => {
-  const zones = (await fetch('/zones.geojson').then((r) => r.json())) as GeoJSON.FeatureCollection;
-  // Les plus grandes zones d'abord pour que les petites restent visibles au survol.
+// La carte peut ne pas être prête quand l'utilisateur choisit une adresse (réseau mobile lent) :
+// le prix s'affiche tout de suite, le tracé attend la carte.
+const mapReady = new Promise<void>((resolve) => map.once('load', () => resolve()));
+
+map.once('load', async () => {
+  // 1. Couche itinéraire en premier, sans attendre le téléchargement des zones.
+  map.addSource('route', { type: 'geojson', data: emptyLine });
+  map.addLayer({
+    id: 'route-casing',
+    type: 'line',
+    source: 'route',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#ffffff', 'line-width': 7 },
+  });
+  map.addLayer({
+    id: 'route-line',
+    type: 'line',
+    source: 'route',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#0F1B2D', 'line-width': 4 },
+  });
+  map.getCanvas().style.cursor = 'crosshair';
+  map.on('click', (e) => onMapClick(e.lngLat.lat, e.lngLat.lng));
+
+  // 2. Zones (sous l'itinéraire et sous les libellés du fond de carte).
+  let zones: GeoJSON.FeatureCollection;
+  try {
+    const res = await fetch('/zones.geojson');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    zones = await res.json();
+  } catch (err) {
+    console.error('Zones indisponibles :', err);
+    return;
+  }
   // Couleurs et prix relus depuis la config (pas besoin de régénérer les zones pour les changer).
   for (const f of zones.features) {
     const tier = TIERS.find((t) => t.max_km === f.properties!.max_km);
     if (tier) Object.assign(f.properties!, { couleur: tier.couleur, prix: tier.prix });
   }
+  // Les plus grandes zones d'abord pour que les petites restent visibles.
   zones.features.sort((a, b) => (b.properties!.max_km as number) - (a.properties!.max_km as number));
 
   const firstSymbol = map.getStyle().layers.find((l) => l.type === 'symbol')?.id;
@@ -114,27 +146,23 @@ map.on('load', async () => {
     firstSymbol,
   );
 
-  map.addSource('route', { type: 'geojson', data: emptyLine });
-  map.addLayer({
-    id: 'route-casing',
-    type: 'line',
-    source: 'route',
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#ffffff', 'line-width': 7 },
-  });
-  map.addLayer({
-    id: 'route-line',
-    type: 'line',
-    source: 'route',
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#0F1B2D', 'line-width': 4 },
-  });
-
-  fitTo(bboxOf(zones.features.flatMap((f) => flatCoords(f.geometry))));
-
-  map.getCanvas().style.cursor = 'crosshair';
-  map.on('click', (e) => onMapClick(e.lngLat.lat, e.lngLat.lng));
+  // Ne pas écraser le cadrage d'un itinéraire déjà affiché.
+  if (!last) fitTo(bboxOf(zones.features.flatMap((f) => flatCoords(f.geometry))));
 });
+
+let routeSeq = 0;
+async function drawRoute(geometry: GeoJSON.LineString | null) {
+  const seq = ++routeSeq;
+  await mapReady;
+  if (seq !== routeSeq) return; // un tracé plus récent a été demandé entre-temps
+  const source = map.getSource('route') as GeoJSONSource | undefined;
+  source?.setData(geometry ? { type: 'Feature', properties: {}, geometry } : emptyLine);
+  if (geometry) fitTo(bboxOf(geometry.coordinates));
+}
+
+// Mobile / navigateurs intégrés : le clavier change la hauteur de la fenêtre.
+window.visualViewport?.addEventListener('resize', () => map.resize());
+panel.addEventListener('transitionend', () => map.resize());
 
 function flatCoords(g: GeoJSON.Geometry): number[][] {
   if (g.type === 'Polygon') return g.coordinates.flat();
@@ -174,21 +202,23 @@ async function computeFor(place: Place) {
   destMarker.setLngLat([place.lon, place.lat]).addTo(map);
   highlightLegend(-1);
 
+  let data: ApiResult;
   try {
     const res = await fetch(`/api/distance?lat=${place.lat}&lon=${place.lon}`);
-    const data = (await res.json()) as ApiResult;
+    data = (await res.json()) as ApiResult;
     if (seq !== requestSeq) return;
     if (!res.ok) throw new Error(data.error ?? `Erreur ${res.status}`);
-    last = { place, data };
-    renderQuote(place, data);
-    (map.getSource('route') as GeoJSONSource).setData({ type: 'Feature', properties: {}, geometry: data.geometry });
-    fitTo(bboxOf(data.geometry.coordinates));
   } catch (err) {
     if (seq !== requestSeq) return;
     last = null;
-    (map.getSource('route') as GeoJSONSource | undefined)?.setData(emptyLine);
+    drawRoute(null).catch(() => {});
     resultEl.innerHTML = `<p class="dest">${esc(place.label)}</p><p class="error">${esc((err as Error).message)}</p>`;
+    return;
   }
+  last = { place, data };
+  renderQuote(place, data);
+  // Le tracé ne doit jamais masquer le prix déjà affiché.
+  drawRoute(data.geometry).catch((err) => console.error('Tracé impossible :', err));
 }
 
 function renderQuote(place: Place, data: ApiResult) {
