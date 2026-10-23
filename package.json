@@ -1,0 +1,32 @@
+{
+  "name": "carte-livraison-blue-modal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Carte des zones tarifaires de livraison (distance routière) autour de Blue Modal, Mouguerre",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "zones": "tsx scripts/build-zones.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "maplibre-gl": "^5.24.0"
+  },
+  "devDependencies": {
+    "@turf/boolean-point-in-polygon": "^7.4.0",
+    "@turf/difference": "^7.4.0",
+    "@turf/helpers": "^7.4.0",
+    "@turf/simplify": "^7.4.0",
+    "@turf/union": "^7.4.0",
+    "@types/geojson": "^7946.0.16",
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.5"
+  }
+}
